@@ -1,92 +1,48 @@
-#!/usr/bin/env -S ts-node --loader ts-node/esm
-
-console.log("Script starting"); // Debug: Before imports
-
-import { searchDiseaseVideos } from "../lib/youtube"; // Fixed import
-import dotenv from "dotenv";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
-
-console.log("Imported dependencies"); // Debug: After imports
-
-// Load environment variables safely
-dotenv.config();
-if (!process.env.YOUTUBE_API_KEY) {
-  console.error("Error: YOUTUBE_API_KEY is missing from .env file!");
-  process.exit(1);
-}
-console.log("dotenv configured successfully"); // Debug
-
-async function fetchVideos(query: string, numRecords: number) {
-  console.log(`Fetching ${numRecords} videos for "${query}"`);
-
-  try {
-    const videos = await searchDiseaseVideos(query, numRecords);
-
-    if (!videos || videos.length === 0) {
-      console.error("No videos found. Check query or API limits.");
-      process.exit(1);
-    }
-
-    console.log("Videos fetched successfully");
-    console.log(JSON.stringify(videos, null, 2)); // Print videos as JSON
-  } catch (error: any) {
-    console.error(
-      "Error fetching videos:",
-      error.message || error,
-      error.stack || ""
-    );
-    process.exit(1);
-  }
-}
+import { searchDiseaseVideos, getTranscript } from "../lib/youtube";
+import { initializeDatabase, storeVideo, storeTranscript } from "../lib/database";
+import { safeLog } from "../lib/logger";
 
 async function main() {
+  const disease = process.argv[2];
+  if (!disease) {
+    safeLog("error", "Usage: youtube-fetcher.ts <disease_name>");
+    process.exit(1);
+  }
+
   try {
-    const argv = yargs(hideBin(process.argv))
-      .usage("Usage: youtube-fetcher -n <number-of-records> <keywords>")
-      .option("n", {
-        alias: "numRecords",
-        type: "number",
-        description: "Number of records to fetch (max 50)",
-        default: 50,
-      })
-      .demandCommand(1, "Please provide search keywords")
-      .help()
-      .parseSync();
+    // Initialize database
+    await initializeDatabase();
 
-    console.log("Parsed arguments:", argv);
+    // Fetch videos
+    const videos = await searchDiseaseVideos(disease);
+    safeLog("error", `Found ${videos.length} videos for "${disease}"`);
 
-    const numRecords = Math.min(argv.n, 50);
-    const query = argv._.join(" ");
-
-    if (isNaN(numRecords) || numRecords <= 0) {
-      console.error("Error: -n must be a positive integer.");
-      process.exit(1);
+    // Store each video and its transcript
+    for (const video of videos) {
+      try {
+        // Store video metadata
+        await storeVideo(video);
+        
+        // Fetch and store transcript
+        const transcript = await getTranscript(video.id);
+        if (transcript) {
+          await storeTranscript(video.id, transcript, 'en');
+          safeLog("error", `✅ Stored transcript for video ${video.id}`);
+        } else {
+          safeLog("error", `⚠️ No transcript available for video ${video.id}`);
+        }
+      } catch (error) {
+        safeLog("error", `❌ Error processing video ${video.id}:`, error);
+      }
     }
 
-    await fetchVideos(query, numRecords);
-  } catch (error: any) {
-    console.error("Error in main:", error.message || error, error.stack || "");
+    // Output video IDs for the pipeline
+    console.log(JSON.stringify(videos.map(v => v.id)));
+    
+  } catch (error) {
+    safeLog("error", "❌ Error:", error);
     process.exit(1);
   }
 }
 
-// Global error handling
-process.on("unhandledRejection", (reason: any, promise) => {
-  console.error(
-    "Global unhandled rejection:",
-    reason.message || reason,
-    reason.stack || ""
-  );
-  process.exit(1);
-});
-
-// Run script
-main().catch((error: any) => {
-  console.error(
-    "Unhandled error in youtube-fetcher:",
-    error.message || error,
-    error.stack || ""
-  );
-  process.exit(1);
-});
+main().catch(console.error);

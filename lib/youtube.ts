@@ -14,6 +14,16 @@ export interface VideoMetadata {
   transcript: string;
 }
 
+export async function getTranscript(videoId: string): Promise<string | null> {
+  try {
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
+    return transcript.map(item => item.text).join(" ");
+  } catch (error) {
+    console.error(`Error fetching transcript for ${videoId}:`, error);
+    return null;
+  }
+}
+
 // Overload to support both return types
 export async function searchDiseaseVideos(
   query: string,

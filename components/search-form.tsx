@@ -46,6 +46,7 @@ export function SearchForm({ initialQuery = "", onAnalysisUpdate }: SearchFormPr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: query.trim(), maxResults: 50 }),
+        cache: "force-cache", // Uses server-side cached data if available
       });
 
       if (!response.ok) {
@@ -54,7 +55,7 @@ export function SearchForm({ initialQuery = "", onAnalysisUpdate }: SearchFormPr
       }
 
       const data = await response.json();
-      console.log("Fetched Data:", data.analyses);
+      console.log("Fetched Data (cached or fresh):", data.analyses);
 
       if (data.analyses && data.analyses.length > 0) {
         sessionStorage.setItem("analysisResults", JSON.stringify(data.analyses));
@@ -85,15 +86,15 @@ export function SearchForm({ initialQuery = "", onAnalysisUpdate }: SearchFormPr
           type="text"
           placeholder="Enter a disease name or medical condition..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)} // Fixed: Use e.target.value instead of e.state.value
-          className="flex-1"
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 border-gray-300 dark:border-gray-600"
         />
         <Button type="submit" disabled={isLoading}>
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
           Analyze
         </Button>
       </div>
-      {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
+      {error && <p className="text-red-500 mt-2 text-sm dark:text-red-400">{error}</p>}
     </form>
   );
 }
